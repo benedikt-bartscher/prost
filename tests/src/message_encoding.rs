@@ -153,6 +153,43 @@ fn check_float_defaults() {
     assert_eq!(msg.encode_to_vec(), expected);
 }
 
+/// A message with maps of floating point values.
+#[derive(Clone, PartialEq, Message)]
+pub struct ZeroMaps {
+    #[prost(btree_map = "int32, float", tag = "1")]
+    pub floats: BTreeMap<i32, f32>,
+    #[prost(btree_map = "int32, double", tag = "2")]
+    pub doubles: BTreeMap<i32, f64>,
+}
+
+/// A `-0.0` map value is encoded like a `-0.0` field, while a `0.0` one is still left out.
+#[test]
+fn check_negative_zero_map_values() {
+    const FLOATS: &[u8] = &[0x0a, 0x07, 0x08, 0x01, 0x15, 0x00, 0x00, 0x00, 0x80];
+    const DOUBLES: &[u8] = &[
+        0x12, 0x0b, 0x08, 0x01, 0x11, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x80,
+    ];
+    let both = [FLOATS, DOUBLES].concat();
+
+    let msg = ZeroMaps {
+        floats: BTreeMap::from([(1, -0.0)]),
+        doubles: BTreeMap::from([(1, -0.0)]),
+    };
+    assert_eq!(msg.encoded_len(), both.len());
+    assert_eq!(msg.encode_to_vec(), both);
+    let decoded = ZeroMaps::decode(both.as_slice()).unwrap();
+    assert_eq!(decoded.floats[&1].to_bits(), (-0.0f32).to_bits());
+    assert_eq!(decoded.doubles[&1].to_bits(), (-0.0f64).to_bits());
+
+    let msg = ZeroMaps {
+        floats: BTreeMap::from([(1, 0.0)]),
+        doubles: BTreeMap::from([(1, 0.0)]),
+    };
+    let expected = [0x0a, 0x02, 0x08, 0x01, 0x12, 0x02, 0x08, 0x01];
+    assert_eq!(msg.encoded_len(), expected.len());
+    assert_eq!(msg.encode_to_vec(), expected);
+}
+
 /// A protobuf message which contains all scalar types.
 #[derive(Clone, PartialEq, Message)]
 pub struct ScalarTypes {

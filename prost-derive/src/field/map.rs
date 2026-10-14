@@ -146,6 +146,24 @@ impl Field {
                     );
                 }
             }
+            ValueTy::Scalar(value_ty @ (scalar::Ty::Float | scalar::Ty::Double)) => {
+                let val_mod = value_ty.module();
+                let ve = quote!(#prost_path::encoding::#val_mod::encode);
+                let vl = quote!(#prost_path::encoding::#val_mod::encoded_len);
+                let is_default = float_is_default(value_ty);
+                quote! {
+                    #prost_path::encoding::#module::encode_by(
+                        #ke,
+                        #kl,
+                        #ve,
+                        #vl,
+                        #is_default,
+                        #tag,
+                        &#ident,
+                        buf,
+                    );
+                }
+            }
             ValueTy::Scalar(value_ty) => {
                 let val_mod = value_ty.module();
                 let ve = quote!(#prost_path::encoding::#val_mod::encode);
@@ -227,6 +245,20 @@ impl Field {
                         #kl,
                         #prost_path::encoding::int32::encoded_len,
                         &(#default),
+                        #tag,
+                        &#ident,
+                    )
+                }
+            }
+            ValueTy::Scalar(value_ty @ (scalar::Ty::Float | scalar::Ty::Double)) => {
+                let val_mod = value_ty.module();
+                let vl = quote!(#prost_path::encoding::#val_mod::encoded_len);
+                let is_default = float_is_default(value_ty);
+                quote! {
+                    #prost_path::encoding::#module::encoded_len_by(
+                        #kl,
+                        #vl,
+                        #is_default,
                         #tag,
                         &#ident,
                     )
@@ -402,5 +434,14 @@ impl ValueTy {
                 }
             ),
         }
+    }
+}
+
+/// Whether a float or double map value is the default `0.0`, compared by bit pattern so that
+/// `-0.0` is encoded.
+fn float_is_default(ty: &scalar::Ty) -> TokenStream {
+    match ty {
+        scalar::Ty::Float => quote!(|val: &f32| val.to_bits() == 0),
+        _ => quote!(|val: &f64| val.to_bits() == 0),
     }
 }

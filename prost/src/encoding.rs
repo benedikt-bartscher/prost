@@ -1041,9 +1041,44 @@ macro_rules! map {
             VE: Fn(u32, &V, &mut B),
             VL: Fn(u32, &V) -> usize,
         {
+            encode_by(
+                key_encode,
+                key_encoded_len,
+                val_encode,
+                val_encoded_len,
+                |val| val == val_default,
+                tag,
+                values,
+                buf,
+            )
+        }
+
+        /// Generic protobuf map encode function, leaving out the values `val_is_default` holds
+        /// default.
+        ///
+        /// This is necessary because `-0.0` equals the default `0.0` of a float or double, but
+        /// has to be encoded to keep its sign.
+        pub fn encode_by<K, V, B, KE, KL, VE, VL, VD>(
+            key_encode: KE,
+            key_encoded_len: KL,
+            val_encode: VE,
+            val_encoded_len: VL,
+            val_is_default: VD,
+            tag: u32,
+            values: &$map_ty<K, V>,
+            buf: &mut B,
+        ) where
+            K: Default + Eq + Hash + Ord,
+            B: BufMut,
+            KE: Fn(u32, &K, &mut B),
+            KL: Fn(u32, &K) -> usize,
+            VE: Fn(u32, &V, &mut B),
+            VL: Fn(u32, &V) -> usize,
+            VD: Fn(&V) -> bool,
+        {
             for (key, val) in values.iter() {
                 let skip_key = key == &K::default();
-                let skip_val = val == val_default;
+                let skip_val = val_is_default(val);
 
                 let len = (if skip_key { 0 } else { key_encoded_len(1, key) })
                     + (if skip_val { 0 } else { val_encoded_len(2, val) });
@@ -1115,6 +1150,30 @@ macro_rules! map {
             KL: Fn(u32, &K) -> usize,
             VL: Fn(u32, &V) -> usize,
         {
+            encoded_len_by(
+                key_encoded_len,
+                val_encoded_len,
+                |val| val == val_default,
+                tag,
+                values,
+            )
+        }
+
+        /// Generic protobuf map encode function, leaving out the values `val_is_default` holds
+        /// default, as [`encode_by`] does.
+        pub fn encoded_len_by<K, V, KL, VL, VD>(
+            key_encoded_len: KL,
+            val_encoded_len: VL,
+            val_is_default: VD,
+            tag: u32,
+            values: &$map_ty<K, V>,
+        ) -> usize
+        where
+            K: Default + Eq + Hash + Ord,
+            KL: Fn(u32, &K) -> usize,
+            VL: Fn(u32, &V) -> usize,
+            VD: Fn(&V) -> bool,
+        {
             key_len(tag) * values.len()
                 + values
                     .iter()
@@ -1123,7 +1182,7 @@ macro_rules! map {
                             0
                         } else {
                             key_encoded_len(1, key)
-                        }) + (if val == val_default {
+                        }) + (if val_is_default(val) {
                             0
                         } else {
                             val_encoded_len(2, val)
